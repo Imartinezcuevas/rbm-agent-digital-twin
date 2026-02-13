@@ -304,32 +304,6 @@ if ASSISTANT_AVAILABLE and assistant is not None:
                 except Exception as e:
                     error_msg = f"Error consulting assistant: {str(e)}"
                     st.session_state['chat_messages'].append({"role": "assistant", "content": error_msg})
-        
-        # Clear chat button - usando form para evitar conflictos
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            with st.form(key='clear_chat_form', clear_on_submit=True):
-                clear_clicked = st.form_submit_button("Clear Chat History", use_container_width=True, type="secondary")
-                
-                # Process clear action
-                if clear_clicked:
-                    st.session_state['chat_messages'] = []
-        
-        with col2:
-            # Export chat button - FUERA del form
-            if len(st.session_state['chat_messages']) > 0:
-                chat_export = "\n\n".join([
-                    f"{'USER' if msg['role'] == 'user' else 'ASSISTANT'}: {msg['content']}"
-                    for msg in st.session_state['chat_messages']
-                ])
-                st.download_button(
-                    "Download Chat Log",
-                    chat_export,
-                    file_name=f"rbm500_chat_{int(time.time())}.txt",
-                    mime="text/plain",
-                    use_container_width=True
-                )
 
 elif st.session_state['assistant_error']:
     st.error(f"**Assistant initialization failed:** {st.session_state['assistant_error']}")
