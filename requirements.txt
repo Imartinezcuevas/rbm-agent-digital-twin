@@ -8,3 +8,4 @@ langchain-community
 langchain-ollama
 chromadb
 pypdf
+langchain-chroma
