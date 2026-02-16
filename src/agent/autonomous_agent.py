@@ -50,10 +50,12 @@ class AutonomousManager:
             ---------------------------
             
             RULES:
-            - EMERGENCY_STOP: If vibration > 7 mm/s OR temp > 100°C OR lid open while running
+            - EMERGENCY_STOP: ONLY if machine is RUNNING and (vibration > 7 mm/s OR temp > 100°C OR lid open)
             - RESET_RELAY: If thermal trip is active AND temp < 70°C
-            - LOG_TICKET: If bearing wear > 0.7 OR vibration trending upward
-            - MONITOR: If system is nominal or warnings are manageable
+            - LOG_TICKET: If vibration trending upward (but machine already stopped)
+            - MONITOR: If system is nominal or warnings are manageable or machine is already stopped
+            
+            IMPORTANT: Do NOT issue EMERGENCY_STOP if the machine is already STOPPED (status: "STOPPED").
             
             Respond ONLY with valid JSON (no markdown, no explanation):
             {{
@@ -91,13 +93,61 @@ class AutonomousManager:
 
         # FAST LOOP: Heuristic checks (no AI needed)
         
-        # Check for warning conditions
+        # If machine is already stopped, don't keep issuing emergency stops
+        if not is_running and not trip:
+            # Machine is stopped and no thermal trip - just monitor
+            if vib > 7.0:  # Only log ticket if vibration is VERY high
+                return {
+                    "action": "LOG_TICKET", 
+                    "reason": f"Machine stopped but vibration critically high ({vib:.1f} mm/s) - maintenance needed (Fast Loop)",
+                    "llm_used": False
+                }
+            return {
+                "action": "MONITOR", 
+                "reason": "Machine stopped - monitoring only (Fast Loop)",
+                "llm_used": False
+            }
+        
+        # Check for thermal trip reset opportunity
+        if trip and temp < 70.0:
+            return {
+                "action": "RESET_RELAY",
+                "reason": f"Thermal trip active but temperature cooled to {temp:.1f}°C - safe to reset (Fast Loop)",
+                "llm_used": False
+            }
+        
+        # Check for CRITICAL conditions on running machine (Fast Loop handles these)
+        critical_vib = vib > 7.0  # Raised threshold - only emergency stop on CRITICAL vibration
+        critical_temp = temp > 95.0  # Only emergency stop at very high temp
+        critical_lid = lid and is_running  # Lid open while running is critical
+        
+        # Fast emergency stop for critical conditions
+        if critical_vib:
+            return {
+                "action": "EMERGENCY_STOP",
+                "reason": f"CRITICAL vibration {vib:.1f} mm/s - immediate shutdown required (Fast Loop)",
+                "llm_used": False
+            }
+        
+        if critical_temp:
+            return {
+                "action": "EMERGENCY_STOP",
+                "reason": f"CRITICAL temperature {temp:.1f}°C - immediate shutdown required (Fast Loop)",
+                "llm_used": False
+            }
+        
+        if critical_lid:
+            return {
+                "action": "EMERGENCY_STOP",
+                "reason": "CRITICAL safety violation - lid open while running (Fast Loop)",
+                "llm_used": False
+            }
+        
+        # Check for warning conditions (not critical, might need LLM evaluation)
         vib_warning = vib > 5.0 
-        temp_warning = temp > 85.0
-        is_tripped = trip
-        lid_risk = lid and is_running
+        temp_warning = temp > 75.0
 
-        if not (vib_warning or temp_warning or is_tripped or lid_risk):
+        if not (vib_warning or temp_warning):
             return {
                 "action": "MONITOR", 
                 "reason": "System nominal - all parameters within safe limits (Fast Loop)",
@@ -150,7 +200,7 @@ class AutonomousManager:
                 "llm_used": True,
                 "error": str(e)
             }
-
+           
 if __name__ == "__main__":
     try:
         manager = AutonomousManager()
